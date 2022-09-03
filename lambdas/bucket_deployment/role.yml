@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Audit Framework LOB Resources
+Parameters:
+  DeployVersion:
+    Type: String
+    Description: Deploy Version for version tracking.
+  AuditAccountRoleArns:
+    Type: String
+    Description: >-
+      The audit account IDs (comma separated string) that need trust
+      relationship to GD-AuditFramework-ExecutorRole.
+  AuditAccountParamBuckets:
+    Type: String
+    Description: The audit account's params  bucket.
+  AuditAccountResultsBuckets:
+    Type: String
+    Description: The audit account's results  bucket.
+  SecurityDL:
+    Type: String
+    Description: The SecurityDL to which notifications should be sent to
+Resources:
+  AuditSNSTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      DisplayName: AuditSNSTopic
+      Subscription:
+        - Endpoint: !Ref SecurityDL
+          Protocol: email
+      Tags:
+        - Key: ResourceType
+          Value: SNS
+      TopicName: AuditSNSTopic
+  KBAuditFrameworkECSAccess:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-ECS-Access
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ecs:RunTask'
+              - 'ecs:RegisterTaskDefinition'
+              - 'ecs:DescribeTaskDefinition'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'iam:PassRole'
+            Resource:
+              - 'arn:aws:iam::*:role/KB-AuditFramework-TaskRole'
+              - 'arn:aws:iam::*:role/KB-AuditFramework-TaskExecutionRole'
+            Condition:
+              StringLike:
+                'iam:PassedToService': ecs-tasks.amazonaws.com
+  KBAuditFrameworkS3Access:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-S3-Access
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+            Resource: !Split 
+              - ','
+              - !Ref AuditAccountParamBuckets
+          - Effect: Allow
+            Action:
+              - 's3:PutObject'
+              - 's3:PutObjectAcl'
+            Resource: !Split 
+              - ','
+              - !Ref AuditAccountResultsBuckets
+  KBAuditFrameworkCloudWatchAccess:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-CloudWatch-Access
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+            Resource: '*'
+  KBAuditFrameworkSecurityHubAccess:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-SecurityHub-Access
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'securityhub:BatchImportFindings'
+              - 'securityhub:BatchUpdateFindings'
+            Resource: '*'
+  KBAuditFrameworkSSMAccess:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-SSM-Access
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'ssm:PutParameter'
+              - 'ssm:Get*'
+              - 'ssm:DeleteParameter'
+            Resource: !Sub 'arn:aws:ssm:*:${AWS::AccountId}:parameter/CirrusScan/*'
+  KBAuditFrameworkTaskExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: KB-AuditFramework-TaskExecutionRole
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+        - !Ref KBAuditFrameworkCloudWatchAccess
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+  KBAuditFrameworkContainerScanRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: KB-AuditFramework-ContainerScan-Role
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
+        - 'arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess'
+        - !Ref KBAuditFrameworkContainerAssumeRolePolicy
+        - !Ref KBAuditFrameworkContainerScanLoggingPolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+  KBAuditFrameworkContainerAssumeRolePolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-ContainerScan-AssumeRole-Policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'sts:AssumeRole'
+            Resource: 'arn:aws:iam::*:role/KB-AuditFramework-ContainerScan-AssumeRole'
+  KBAuditFrameworkContainerScanLoggingPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-ContainerScan-Logging-Policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'kinesis:PutRecord'
+            Resource: !Sub 'arn:aws:kinesis:*:${AWS::AccountId}:stream/kb-*'
+  ContainerScanServerInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Roles:
+        - !Ref KBAuditFrameworkContainerScanRole
+      InstanceProfileName: KB-AuditFramework-ContainerScan-InstanceProfile
+  KBAuditFrameworkAssumeRoleToSecretsManagerReadOnlyRole:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-AssumeRole-To-SecretsManager-ReadRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'sts:AssumeRole'
+            Resource: 'arn:aws:iam::*:role/KB-AuditFramework-SecretsManagerReadOnlyRole'
+  KBAuditFrameworkPublishToSNSTopic:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-Publish-To-SNSTopic
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'SNS:Publish'
+            Resource: !Sub 'arn:aws:sns:*:${AWS::AccountId}:AuditSNSTopic'
+  KBAuditServiceCatalogAccess:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: KB-AuditFramework-ServiceCatalog-Access
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'servicecatalog:*'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'servicecatalog:roleLevel': self
+  KBAuditFrameworkTaskRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: KB-AuditFramework-TaskRole
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/ReadOnlyAccess'
+        - 'arn:aws:iam::aws:policy/SecurityAudit'
+        - !Ref KBAuditServiceCatalogAccess
+        - !Ref KBAuditFrameworkECSAccess
+        - !Ref KBAuditFrameworkS3Access
+        - !Ref KBAuditFrameworkSSMAccess
+        - !Ref KBAuditFrameworkSecurityHubAccess
+        - !Ref KBAuditFrameworkAssumeRoleToSecretsManagerReadOnlyRole
+        - !Ref KBAuditFrameworkPublishToSNSTopic
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+              AWS: !Split 
+                - ','
+                - !Ref AuditAccountRoleArns
+            Action:
+              - 'sts:AssumeRole'
+Outputs:
+  DeployVersionOutput:
+    Description: Deploy Version of Cloudfoundation
+    Value: !Ref DeployVersion

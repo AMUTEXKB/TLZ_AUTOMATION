@@ -1,0 +1,390 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: AWS Regional WAF Rules Deployment - Added webacl for the WAFv2
+Parameters:
+  DeployVersion:
+    Type: String
+    Description: Deploy Version for version tracking.
+  # Name of WebACLv2
+  GodaddyWebACLv2:
+    Description: "WAF v2, much more upgrades and options"
+    Type: String
+    Default: GoDaddyDefaultWebACLv2
+#Web ACL using the v2 of the WAF
+# Enabling the WAF v2 AWS Managed Rules: Common Ruleset,SQLi Ruleset and Rate Limiting
+# Link to Managed Rules - https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-list.html#aws-managed-rule-groups-baseline
+'Resources':
+  WebACLv2:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Ref GodaddyWebACLv2
+      Scope: REGIONAL
+      Description: Godaddy Web ACL using AWS Managed Rules.
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Join
+          - ""
+          - - !Ref GodaddyWebACLv2
+            - "Metric"
+      Rules:
+        - Name: AWS-AWSManagedRulesCommonRuleSet
+          Priority: 0
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: MetricForAMRCommon
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+        - Name: AWS-AWSManagedRulesSQLiRuleSet
+          Priority: 1
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: MetricForAMRSQLi
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesSQLiRuleSet
+        - Name: Rate-Limiting
+          Priority: 2
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateBased
+          Statement:
+            RateBasedStatement:
+              Limit: 2000
+              AggregateKeyType: IP
+### BEGIN DEFAULT CONDITIONS & RULES ###
+# whitelist condition & rule
+  IPWhiteListSet:
+    Type: AWS::WAFRegional::IPSet
+    Properties:
+      Name: "IP Whitelist Set"
+  IPWhitelistRule:
+    Type: AWS::WAFRegional::Rule
+    Properties:
+      Name: "IP Whitelist Rule"
+      MetricName: IPWhitelist
+      Predicates:
+        -
+          DataId:
+            Ref: IPWhiteListSet
+          Negated: true
+          Type: IPMatch
+    DependsOn:
+      - IPWhiteListSet
+# blacklist condition & rule
+  IPBlackListSet:
+    Type: AWS::WAFRegional::IPSet
+    Properties:
+      Name: "IP Blacklist Set"
+  IPBlacklistRule:
+    Type: AWS::WAFRegional::Rule
+    Properties:
+      Name: "IP Blacklist Rule"
+      MetricName: IPBlacklist
+      Predicates:
+        -
+          DataId:
+            Ref: IPBlackListSet
+          Negated: false
+          Type: IPMatch
+    DependsOn:
+      - IPBlackListSet
+# XSS condition
+  XssDetection:
+    Type: 'AWS::WAFRegional::XssMatchSet'
+    Properties:
+      Name: "XSS Condition"
+      XssMatchTuples:
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: URI
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: URI
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Cookie
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Cookie
+          TextTransformation: HTML_ENTITY_DECODE
+# XSS rule
+  XssRule:
+    Type: 'AWS::WAFRegional::Rule'
+    Properties:
+      Name: "Cross-site Scripting Rule"
+      MetricName: 'WAFXssRule'
+      Predicates:
+        - DataId:
+            Ref: XssDetection
+          Negated: false
+          Type: XssMatch
+# SQL injection condition
+  SqlInjectionDetection:
+    Type: 'AWS::WAFRegional::SqlInjectionMatchSet'
+    Properties:
+      Name: "SQL injection condition"
+      SqlInjectionMatchTuples:
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: URI
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: URI
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Cookie
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Cookie
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Authorization
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Authorization
+          TextTransformation: HTML_ENTITY_DECODE
+# SQL injection rule
+  SqlInjectionRule:
+    Type: 'AWS::WAFRegional::Rule'
+    Properties:
+      Name: 'SQL Injection Rule'
+      MetricName: 'WAFSqlInjectionRule'
+      Predicates:
+        - DataId:
+            Ref: SqlInjectionDetection
+          Negated: false
+          Type: SqlInjectionMatch
+# Rate limit rule
+  RateLimitRule:
+    Type: AWS::WAFRegional::RateBasedRule
+    Properties:
+      MetricName: RateLimit
+      Name: RateLimit
+      RateKey: IP
+      RateLimit: 2000
+### END DEFAULT CONDITIONS & RULES ###
+
+### BEGIN CUSTOM CONDITIONS & RULES ###
+# HeaderSizeConstraint condition
+  OriginRefererCookieBytesNotZero:
+    Type: AWS::WAFRegional::SizeConstraintSet
+    Properties:
+      Name: "Non-zero header value size constraints"
+      SizeConstraints:
+        -
+          ComparisonOperator: GE
+          FieldToMatch:
+            Type: HEADER
+            Data: Origin
+          Size: 0
+          TextTransformation: NONE
+        -
+          ComparisonOperator: GE
+          FieldToMatch:
+            Type: HEADER
+            Data: Referer
+          Size: 0
+          TextTransformation: NONE
+        -
+          ComparisonOperator: GE
+          FieldToMatch:
+            Type: HEADER
+            Data: Cookie
+          Size: 0
+          TextTransformation: NONE
+# HeaderSizeConstraint Rule
+  SizeConstraintRule:
+    Type: AWS::WAFRegional::Rule
+    Properties:
+      Name: "Header Size Constraint Rule"
+      MetricName: SizeConstraintRule
+      Predicates:
+        -
+          DataId:
+            Ref: OriginRefererCookieBytesNotZero
+          Negated: true
+          Type: SizeConstraint
+    DependsOn:
+      - OriginRefererCookieBytesNotZero
+### END CUSTOM CONDITIONS & RULES ###
+
+### BEGIN WebACLs ###
+# Default WebACL v1
+  DefaultWebACLv1:
+    Type: AWS::WAFRegional::WebACL
+    Properties:
+      Name: "GoDaddy Default Web ACL v1"
+      DefaultAction:
+        Type: ALLOW
+      MetricName: GoDaddyWebACLv1
+      Rules:
+        -
+          Action:
+            Type: ALLOW
+          Priority: 1
+          RuleId:
+            Ref: IPWhitelistRule
+        -
+          Action:
+            Type: BLOCK
+          Priority: 2
+          RuleId:
+            Ref: IPBlacklistRule
+        -
+          Action:
+            Type: BLOCK
+          Priority: 3
+          RuleId:
+            Ref: XssRule
+        -
+          Action:
+            Type: BLOCK
+          Priority: 4
+          RuleId:
+            Ref: SqlInjectionRule
+### Omitting rate-based rule due to cloudformation bug
+#        -
+#          Action:
+#            Type: BLOCK
+#          Priority: 5
+#          RuleId:
+#            Ref: RateLimitRule
+    DependsOn:
+      - IPWhitelistRule
+      - IPBlacklistRule
+      - XssRule
+      - SqlInjectionRule
+#      - RateLimitRule
+
+# previous WebAcl Versions
+  HeaderCheckWebACL:
+    Type: AWS::WAFRegional::WebACL
+    Properties:
+      Name: BlockNoOriginRefererCookies
+      DefaultAction:
+        Type: ALLOW
+      MetricName: SizeConstraintWebACL
+      Rules:
+        -
+          Action:
+            Type: ALLOW
+          Priority: 1
+          RuleId:
+            Ref: IPWhitelistRule
+        -
+          Action:
+            Type: BLOCK
+          Priority: 2
+          RuleId:
+            Ref: SizeConstraintRule
+    DependsOn:
+      - IPWhitelistRule
+      - SizeConstraintRule
+### END WebACLs ###
+
+### Begin SSM Parameters: ###
+  IPWhitelistSetParameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: !Sub /AdminParams/Security/WAF/${AWS::Region}/IPWhitelistSet
+        Type: String
+        Value: !Ref IPWhiteListSet
+        Description: WAF Whitelist IPSet ID
+  IPBlacklistSetParameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: !Sub /AdminParams/Security/WAF/${AWS::Region}/IPBlacklistSet
+        Type: String
+        Value: !Ref IPBlackListSet
+        Description: WAF Blacklist IPSet ID
+  RateLimitRuleParameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: !Sub /AdminParams/Security/WAF/${AWS::Region}/RateLimitRuleID
+        Type: String
+        Value: !Ref RateLimitRule
+        Description: WAF Rate-Limit Rule ID
+  WebACLv1Parameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: !Sub /AdminParams/Security/WAF/${AWS::Region}/WebACLv1
+        Type: String
+        Value: !Ref DefaultWebACLv1
+        Description: WAF WebACL ID
+  LatestWebACLVersionParameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: !Sub /AdminParams/Security/WAF/${AWS::Region}/LatestRevision
+        Type: String
+        Value: 1
+        Description: Latest Godaddy WebACL Release Version
+  HeaderCheckParameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: !Sub /AdminParams/Security/WAF/${AWS::Region}/OriginRefererCookieBytesNotZeroWebACLv1
+        Type: String
+        Value: !Ref HeaderCheckWebACL
+        Description: WAF ACL to block web requests with blank origin, referer, and cookies.
+  WebACLv2IDParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /AdminParams/Security/WAFv2/WebACLv2/Id
+      Type: String
+      Value: !GetAtt WebACLv2.Id
+      Description: WAF WebACL ID
+  WebACLv2ARNParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /AdminParams/Security/WAFv2/WebACLv2/ARN
+      Type: String
+      Value: !GetAtt WebACLv2.Arn
+      Description: WAF WebACL ID
+  LatestWebACLv2VersionParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /AdminParams/Security/WAFv2/LatestRevision
+      Type: String
+      Value: 1
+      Description: Latest Godaddy WebACL Release Version
