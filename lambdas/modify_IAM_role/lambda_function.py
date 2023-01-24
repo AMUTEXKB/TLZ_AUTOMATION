@@ -6,7 +6,7 @@ import json
 
 
 logger = logging.getLogger()
-stack_name="role"
+stack_name=""
 # stack parameters
 
 
@@ -17,78 +17,121 @@ def lambda_handler(event, context):
     log_level = os.environ.get("log_level", "INFO")
     logger.setLevel(level=log_level)
     logger.info(f"REQUEST: {event}")
-    target_region="us-east-1"
+    target_region=""
     account_num = sts.get_caller_identity()["Account"]
-    aws_service="iam"
-    dynamodbtable_name="TlsAutomationStack"
+    aws_service=""
+    tablename=""
     d_client = boto3.client('dynamodb')
-    bucket_name="amudarole"
-
-    stack_name="role"
+    bucket_name=""
     # stack parameters
-    deploy_version="2010-09-09"
+    deploy_version=""
     audit_account_role_arns=f"arn:aws:iam::{account_num}:user/Jahmai-Training-User"
-    audit_account_param_buckets="arn:aws:s3:::amudakb"
-    audit_account_result_buckets="arn:aws:s3:::amudakb"
-    
-    scan_data= d_client.get_item(
-            TableName=dynamodbtable_name,
-            Key={"service": {'S': aws_service}
-            })
-    if scan_data['Item']["service"] == {"S":aws_service} and scan_data['Item']["status"] == {"S":"disabled"}:  
-        client = boto3.client("organizations")
-        
-        response = client.describe_account(
-        AccountId=account_num
-        )
-        email=response['Account']['Email']
-        
-    
-        logger.info(f"Starting modify of new account: {account_num}")
-        logger.info(f"account_num: {account_num}")
-        role_arn = f"arn:aws:iam::{account_num}:role/KB_assumed_role" #create an assume role with the name KB_assumed_role
-        sts_auth = sts.assume_role(RoleArn=role_arn, RoleSessionName="acquired_account_role")
-        credentials = sts_auth["Credentials"]
+    audit_account_param_buckets=""
+    audit_account_result_buckets=""
 
-        # ----------------------------- #
-        # Place all service code below
-        # ----------------------------- #
-
-        # Section for boto3 connection with aws service
-        sts_client = boto3.client(modify_service,
-                                region_name=target_region,
-                                aws_access_key_id=credentials["AccessKeyId"],
-                                aws_secret_access_key=credentials["SecretAccessKey"],
-                                aws_session_token=credentials["SessionToken"], )
-
-        logger.info("PRE LAUNCH STACK")
-        
-        stack_result = launch_stack(
-            sts_client,
-            stack_name,
-            deploy_version,
-            audit_account_role_arns,
-            audit_account_param_buckets,
-            audit_account_result_buckets,
-            email,account_num,aws_service,
-            bucket_name
-        )
-
-        res = {
-                "accountData": account_num,
-                "implementationData": {
-                    "service":{ "S": aws_service},
-                    "status":{ "S":'enabled'}
-                }
-            }
-
-        logger.info(res)
-
-        response = d_client.put_item(
-            TableName=dynamodbtable_name,
-                    Item=res["implementationData"])
+    if os.environ.get("target_region") is not None:
+        target_region = os.environ.get("target_region")
     else:
-        logger.info(f"{aws_service} already enabled in {account_num} and {target_region}")                     
+        error_message = "Missing environment variable target_region"
+        logger.error(error_message)
+        raise Exception(error_message)
+    if os.environ.get("bucket_name") is not None:
+        bucket_name= os.environ.get("bucket_name")
+    else:
+        error_message = "Missing environment variable bucket_name"
+        logger.error(error_message)
+        raise Exception(error_message)
+    if os.environ.get("tablename") is not None:
+        tablename = os.environ.get("tablename")
+    else:
+        error_message = "Missing environment variable tablename"
+        logger.error(error_message)
+        raise Exception(error_message)
+    if os.environ.get("aws_service") is not None:
+        aws_service = os.environ.get("aws_service")
+    else:
+        error_message = "Missing environment variable aws_service"
+        logger.error(error_message)
+        raise Exception(error_message)    
+    if os.environ.get("audit_account_result_buckets") is not None:
+        audit_account_result_buckets = os.environ.get("audit_account_result_buckets")
+    else:
+        error_message = "Missing environment variable audit_account_result_buckets"
+        logger.error(error_message)
+        raise Exception(error_message)   
+    if os.environ.get("audit_account_param_buckets") is not None:
+        audit_account_param_buckets = os.environ.get("audit_account_param_buckets")
+    else:
+        error_message = "Missing environment variable audit_account_param_buckets"
+        logger.error(error_message)
+        raise Exception(error_message)           
+    if os.environ.get("deploy_version") is not None:
+        deploy_version = os.environ.get("deploy_version")
+    else:
+        error_message = "Missing environment variable deploy_version"
+        logger.error(error_message)
+        raise Exception(error_message) 
+    if os.environ.get("stack_name") is not None:
+        stack_name = os.environ.get("stack_name")
+    else:
+        error_message = "Missing environment variable stack_name"
+        logger.error(error_message)
+        raise Exception(error_message)              
+
+
+    client = boto3.client("organizations")
+    
+    response = client.describe_account(
+    AccountId=account_num
+    )
+    email=response['Account']['Email']
+    
+
+    logger.info(f"Starting modify of new account: {account_num}")
+    logger.info(f"account_num: {account_num}")
+    role_arn = f"arn:aws:iam::{account_num}:role/KB_assumed_role" #create an assume role with the name KB_assumed_role
+    sts_auth = sts.assume_role(RoleArn=role_arn, RoleSessionName="acquired_account_role")
+    credentials = sts_auth["Credentials"]
+
+    # ----------------------------- #
+    # Place all service code below
+    # ----------------------------- #
+
+    # Section for boto3 connection with aws service
+    sts_client = boto3.client(modify_service,
+                            aws_access_key_id=credentials["AccessKeyId"],
+                            aws_secret_access_key=credentials["SecretAccessKey"],
+                            aws_session_token=credentials["SessionToken"], )
+
+    logger.info("PRE LAUNCH STACK")
+    
+    stack_result = launch_stack(
+        sts_client,
+        stack_name,
+        deploy_version,
+        audit_account_role_arns,
+        audit_account_param_buckets,
+        audit_account_result_buckets,
+        email,account_num,aws_service,
+        bucket_name
+    )
+
+    res = {
+            "accountData": account_num,
+            "region":event,
+            "implementationData": {
+                "service":{ "S": aws_service},
+                "status":{ "S":'enabled'}
+            }
+        }
+
+    logger.info(res)
+
+    response = d_client.put_item(
+        TableName=tablename,
+                Item=res["implementationData"])
+    return(res)             
+                   
 
 def launch_stack(client,
                 stack_name,
@@ -140,6 +183,7 @@ def launch_stack(client,
         # Section for boto3 connection with aws service
         res = {
             "accountData": account_num,
+                      
             "implementationData": {
                 "service":{ "S": aws_service},
                 "status":{ "S":'enabled'},
@@ -154,6 +198,7 @@ def launch_stack(client,
         if error.response["Error"]["Code"] == "AlreadyExistsException":
             res = {
                 "accountData": account_num,
+               
                 "implementationData": {
                     "service":{ "S": aws_service},
                     "status":{ "S":'enabled'},

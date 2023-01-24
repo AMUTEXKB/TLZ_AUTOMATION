@@ -2,10 +2,10 @@
 import os
 
 import aws_cdk as cdk
+from testing.testing import Testing
 
 
 from tls_automation.tls_automation_stack import TlsAutomationStack
-
 
 app = cdk.App()
 
@@ -23,9 +23,10 @@ TlsAutomationStack(app, "TlsAutomationStack",
     # want to deploy the stack to. */
 
     
-    env=cdk.Environment(account='672432851135', region='us-east-1'),
+    env=cdk.Environment(account='109661032234', region='us-east-1'),
 
     # For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html
     )
+Testing(app,"Testing", env=cdk.Environment(account='109661032234', region='us-east-1'))    
 
 app.synth()

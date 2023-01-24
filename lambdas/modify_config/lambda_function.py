@@ -7,19 +7,43 @@ logger = logging.getLogger()
 
 def lambda_handler(event, context):
     sts = boto3.client("sts")
+    account_num = sts.get_caller_identity()["Account"]
     log_level = os.environ.get("log_level", "INFO")
     logger.setLevel(level=log_level)
     logger.info(f"REQUEST: {event}")
-    aws_service = "config"
-    config_name = "default" #input the parameters yourself
-    kb_config_arn = "arn:aws:iam::672432851135:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig"
-    delivery_channel = "config-bucket-672432851135"
-    dynamodbtable_name="TlsAutomationStack"
+    aws_service = ""
+    config_name = ""
+    kb_config_arn = f"arn:aws:iam::{account_num}:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig"
+    dynamodbtable_name=""
+    target_region = ""
+   
 
     try:
-        account_num = sts.get_caller_identity()["Account"]
-        target_region = "us-east-1"
-        kb_central_logging_bucket = "config-bucket-672432851135"
+        if os.environ.get("target_region") is not None:
+            target_region = os.environ.get("target_region")
+        else:
+            error_message = "Missing environment variable target_region"
+            logger.error(error_message)
+            raise Exception(error_message)
+        if os.environ.get("config_name") is not None:
+            config_name= os.environ.get("config_name")
+        else:
+            error_message = "Missing environment variable config_name"
+            logger.error(error_message)
+            raise Exception(error_message)
+        if os.environ.get("dynamodbtable_name") is not None:
+            dynamodbtable_name = os.environ.get("dynamodbtable_name")
+        else:
+            error_message = "Missing environment variable tablename"
+            logger.error(error_message)
+            raise Exception(error_message)
+        if os.environ.get("aws_service") is not None:
+            aws_service = os.environ.get("aws_service")
+        else:
+            error_message = "Missing environment variable aws_service"
+            logger.error(error_message)
+            raise Exception(error_message) 
+        region=event["region"]     
         client = boto3.client('dynamodb')
 
         logger.info(f"Starting scan of new account {account_num}")
@@ -34,7 +58,7 @@ def lambda_handler(event, context):
 
         # Section for boto3 connection with aws service
         sts_client = boto3.client(aws_service,
-                                  region_name=target_region,
+                                  region_name=region,
                                   aws_access_key_id=credentials["AccessKeyId"],
                                   aws_secret_access_key=credentials["SecretAccessKey"],
                                   aws_session_token=credentials["SessionToken"], )
@@ -46,9 +70,10 @@ def lambda_handler(event, context):
         # Section for boto3 connection with aws service
         scan_data= client.get_item(
             TableName=dynamodbtable_name,
-            Key={"service": {'S': aws_service}
+            Key={"region":{"S":region},
+                "service": {'S': aws_service}
             })
-        if scan_data['Item']["service"] == {"S":aws_service} and scan_data['Item']["status"] == {"S":"disabled"}:   
+        if scan_data['Item']["region"] == {"S":region} and scan_data["Item"]["service"] == {"S":aws_service} and scan_data['Item']["status"] == {"S":"disabled"}:      
             create_recorder = sts_client.put_configuration_recorder(
             ConfigurationRecorder={
                 "name": config_name,
@@ -68,8 +93,10 @@ def lambda_handler(event, context):
 
             res = {
                             "enabledServices": 'enabled_services',
+                            "region":region,
                             "accountData": account_num,
                             "implementationData": {
+                                "region":{"S":region},
                                 "service":{ "S": aws_service},
                                 "status":{ "S":'enabled'}
                             }
@@ -77,12 +104,24 @@ def lambda_handler(event, context):
 
             logger.info(res)
 
-            response = client.put_item(
-                TableName=dynamodbtable_name,
-                        Item=res["implementationData"]) 
+            
         else:
         #if custom insight have not been created before create insight
             logger.info(f"service already enabled in {account_num} and {target_region}")
+            res = {
+                "enabledServices": 'enabled_services',
+                "region":region,
+                "accountData": account_num,
+                "implementationData": {
+                    "region":{"S":region},
+                    "service":{ "S": aws_service},
+                    "status":{ "S":'enabled'}
+                }
+            }
+        response = client.put_item(
+            TableName=dynamodbtable_name,
+                    Item=res["implementationData"]) 
+        return (res)            
 
     except botocore.exceptions.ClientError as error:
         logger.error(f"Error: {error}")

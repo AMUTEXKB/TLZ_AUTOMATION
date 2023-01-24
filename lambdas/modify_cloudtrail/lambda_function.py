@@ -1,4 +1,5 @@
 import os
+import re
 import boto3
 import botocore
 import logging
@@ -11,6 +12,7 @@ def lambda_handler(event, context):
     logger.setLevel(level=log_level)
     logger.info(f"REQUEST: {event}")
     aws_service = "cloudtrail"
+    region=event["region"] 
     try:
         account_num = sts.get_caller_identity()["Account"]
         target_region = "us-east-1"
@@ -32,7 +34,7 @@ def lambda_handler(event, context):
 
         # Section for boto3 connection with aws service
         sts_client = boto3.client(aws_service,
-                                  region_name=target_region,
+                                  region_name=region,
                                   aws_access_key_id=credentials["AccessKeyId"],
                                   aws_secret_access_key=credentials["SecretAccessKey"],
                                   aws_session_token=credentials["SessionToken"], )
@@ -119,6 +121,7 @@ def lambda_handler(event, context):
 
         res = {
             "accountData": account_num,
+            "region":region,
             "implementationData": {
                 "service": aws_service,
                 "cloudTrailList": cloudtrail_list,

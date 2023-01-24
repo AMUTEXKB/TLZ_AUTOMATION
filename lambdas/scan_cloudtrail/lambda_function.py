@@ -13,6 +13,7 @@ def lambda_handler(event, context):
     logger = logging.getLogger()
     logger.info(f"event: {event}")
     aws_service = ""
+    region=event["region"]
     account_num = sts.get_caller_identity()["Account"]
     try:
         if os.environ.get("target_region") is not None:
@@ -42,7 +43,7 @@ def lambda_handler(event, context):
         sts_auth = sts.assume_role(RoleArn=role_arn, RoleSessionName="acquired_account_role")
         credentials = sts_auth["Credentials"]
         sts_client = boto3.client(aws_service,
-                                region_name=target_region,
+                                region_name=region,
                                 aws_access_key_id=credentials["AccessKeyId"],
                                 aws_secret_access_key=credentials["SecretAccessKey"],
                                 aws_session_token=credentials["SessionToken"], )
@@ -82,8 +83,10 @@ def lambda_handler(event, context):
 
                         res = {
                                 "accountData": account_num,
+                                "region":region,
                                 "cloudTrailList": cloudtrail_list,
                                 "scanData": {
+                                    "region":{"S":region},
                                     "service":{"S": aws_service},
                                     "status": {"S":status}
                                 }
@@ -101,9 +104,10 @@ def lambda_handler(event, context):
             status = "disabled"
             res = {
                 "accountData": account_num,
+                "region":region,
                 "cloudTrailList": cloudtrail_list,
                 "scanData": {
-                    "service":{"S": aws_service},
+                    "services":{"S": aws_service},
                     "status":{"S": status}
                         }
                 }

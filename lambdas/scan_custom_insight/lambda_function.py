@@ -12,6 +12,7 @@ def lambda_handler(event, context):
     tablename=""
     aws_service="" 
     target_region=""
+    region=event["region"]
     sts = boto3.client("sts")
     account_num = sts.get_caller_identity()["Account"]
     log_level = os.environ.get("log_level", "INFO")
@@ -63,7 +64,7 @@ def lambda_handler(event, context):
     
         # Section for boto3 connection with aws service
         sts_client = boto3.client(modify_service,
-                                  region_name=target_region,
+                                region_name=region,
                                   aws_access_key_id=credentials["AccessKeyId"],
                                   aws_secret_access_key=credentials["SecretAccessKey"],
                                   aws_session_token=credentials["SessionToken"], )
@@ -78,8 +79,10 @@ def lambda_handler(event, context):
                 #updating existing custom insight
                     res= {
                                 "enabledServices": "enabled_services",
+                                "region":region,
                                 "accountData": "account_data",
                                 "scanData": {
+                                    "region":{"S":region},
                                     "service":{"S": aws_service},
                                     "status": {"S":"enabled"}
                                 }
@@ -88,8 +91,10 @@ def lambda_handler(event, context):
                 else:
                     res= {
                             "enabledServices": "enabled_services",
+                            "region":region,
                             "accountData": "account_data",
                             "scanData": {
+                                "region":{"S":region},
                                 "service":{"S": aws_service},
                                 "status": {"S":"disabled"}
                             }
@@ -99,8 +104,10 @@ def lambda_handler(event, context):
         else:
             res= {
                 "enabledServices": "enabled_services",
+                "region":region,
                 "accountData": "account_data",
                 "scanData": {
+                    "region":{"S":region},
                             "service":{"S": aws_service},
                             "status": {"S":"disabled"}
                 }

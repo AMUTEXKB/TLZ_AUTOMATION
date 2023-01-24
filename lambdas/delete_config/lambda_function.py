@@ -27,7 +27,6 @@ def lambda_handler(event, context):
 
         # Section for boto3 connection with aws service
     sts_client = boto3.client(aws_service,
-                              region_name=target_region,
                               aws_access_key_id=credentials["AccessKeyId"],
                               aws_secret_access_key=credentials["SecretAccessKey"],
                               aws_session_token=credentials["SessionToken"], )

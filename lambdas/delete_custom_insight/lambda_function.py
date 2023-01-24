@@ -5,15 +5,13 @@ import logging
 import json
 aws_service="custom insight" 
 modify_service='securityhub'
-account_num="672432851135"
 target_region="us-east-1"
 logger = logging.getLogger()
 
 def lambda_handler(event, context):
     insight_name="CIRRUSSCAN_INSIGHT_NAME"
-    aws_service="custom insight" 
-    modify_service='securityhub'
     sts = boto3.client("sts")
+    account_num = sts.get_caller_identity()["Account"]
     log_level = os.environ.get("log_level", "INFO")
     logger.setLevel(level=log_level)
     logger.info(f"REQUEST: {event}")
@@ -32,7 +30,6 @@ def lambda_handler(event, context):
     
         # Section for boto3 connection with aws service
         sts_client = boto3.client(modify_service,
-                                  region_name=target_region,
                                   aws_access_key_id=credentials["AccessKeyId"],
                                   aws_secret_access_key=credentials["SecretAccessKey"],
                                   aws_session_token=credentials["SessionToken"], )

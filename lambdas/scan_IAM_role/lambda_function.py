@@ -11,7 +11,9 @@ target_region=""
 tablename=""
 logger = logging.getLogger()
 
+
 def lambda_handler(event, context):
+    region=event["region"]    
     try:
         if os.environ.get("target_region") is not None:
             target_region = os.environ.get("target_region")
@@ -59,7 +61,7 @@ def lambda_handler(event, context):
 
         # Section for boto3 connection with aws service
         sts_client = boto3.client(modify_service,
-                                region_name=target_region,
+                                region_name=region,
                                 aws_access_key_id=credentials["AccessKeyId"],
                                 aws_secret_access_key=credentials["SecretAccessKey"],
                                 aws_session_token=credentials["SessionToken"], )
@@ -73,8 +75,10 @@ def lambda_handler(event, context):
             status="enabled"
             res = {
                 "enabledServices": "enabled_services",
+                "region":region,
                 "accountData": account_num,
                 "scanData": {
+                    "region":{"S":region},
                     "service":{"S": aws_service},
                     "status":{"S": status}
                 }  }      
@@ -83,8 +87,10 @@ def lambda_handler(event, context):
             logger.info(f" IAM role does not exist. Account Num: {account_num}")
             res = {
                 "enabledServices": "enabled_services",
+                "region":region,
                 "accountData": account_num,
                 "scanData": {
+                    "region":{"S":region},
                     "service": {"S":aws_service},
                     "status":{"S": status}
                 }

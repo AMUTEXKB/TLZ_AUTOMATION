@@ -10,6 +10,7 @@ def lambda_handler(event, context):
     logger.info(f"event: {event}")
     aws_service = ""
     enabled_services = "enabledServices"
+    region=event["region"]
     target_region=""
     tablename=""
     account_num = sts.get_caller_identity()["Account"]
@@ -45,7 +46,7 @@ def lambda_handler(event, context):
 
             # Section for boto3 connection with aws service
         sts_client = boto3.client(aws_service,
-                                    region_name=target_region, 
+                                    region_name=region,
                                     aws_access_key_id=credentials["AccessKeyId"],
                                     aws_secret_access_key=credentials["SecretAccessKey"],
                                     aws_session_token=credentials["SessionToken"], )
@@ -65,8 +66,10 @@ def lambda_handler(event, context):
             logger.info(f"config is disabled. Account Num: account_num")
             res= {
                     "enabledServices": enabled_services,
+                    "region":region,
                     "accountData": 'account_data',
                     "scanData": {
+                        "region":{"S":region},
                         "service":{"S": aws_service},
                         "status": {"S":"disabled"}
                     }
@@ -90,10 +93,12 @@ def lambda_handler(event, context):
                     status = "enabled" if con["recording"]== True else "disabled" 
                 
                 res= {
-                        
+                        "region":region,                        
                         "scanData": {
+                             "region":{"S":region},
                             "service":{"S": aws_service},                         
                             "status":{"S": status},
+                            
                             's3BucketName':{"S":cong['s3BucketName']},
                         }}
                 
@@ -102,21 +107,25 @@ def lambda_handler(event, context):
                 logger.info(f"config is disabled. Account Num: account_num")
                 res= {
                         "enabledServices": enabled_services,
+                        "region":region, 
                         "accountData": 'account_data',
                         "scanData": {
+                            "region":{"S":region},
                             "service":{"S": aws_service},
                             "status": {"S":"disabled"}
                         }
                     }
-                print(f"RESPONSE: {res}")
+                print(f"RESPONSES: {res}")
             
 
         else:
             logger.info(f"config is disabled. Account Num: account_num")
             res = {
                     "enabledServices": enabled_services,
+                    "region":region, 
                     "accountData": 'account_data',
                     "scanData": {
+                        "region":{"S":region},
                         "service":{"S": aws_service},
                         "status": {"S":"disabled"}
                     }
